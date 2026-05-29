@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MediReporter | Clinical Dashboard</title>
+    <meta name="description" content="Industrial-grade AI pipeline for automated medical report summarization and biomedical entity extraction.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css?v=2.1">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+</head>
+<body>
+    <!-- ── Top Navigation ─────────────────────────────────── -->
+    <nav class="top-nav">
+        <div class="nav-container">
+            <div class="logo-lockup">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M22 12h-4l-3 9L9 3l-3 9H2"></path>
+                </svg>
+                <span class="logo-text">MediReporter <span class="version-badge">v2.0</span></span>
+            </div>
+            <div class="nav-right">
+                <!-- Mode toggle button -->
+                <button id="mode-toggle-btn" class="mode-toggle" aria-pressed="false" title="Switch to High-Accuracy mode (BART + BioBERT only)">
+                    <span class="mode-icon">
+                        <svg id="mode-icon-standard" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                        <svg id="mode-icon-accurate" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="hidden"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
+                    </span>
+                    <span id="mode-label">Standard Mode</span>
+                    <span class="mode-switch-track"><span class="mode-switch-thumb"></span></span>
+                </button>
+                <span class="status-indicator"><span class="pulse-dot"></span> Online</span>
+            </div>
+        </div>
+    </nav>
+
+    <!-- ── Mode Banner (animates in) ─────────────────────── -->
+    <div class="mode-banner" id="mode-banner" aria-live="polite">
+        <div class="nav-container">
+            <div id="mode-banner-content" class="mode-banner-content">
+                <!-- injected by JS -->
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Main App ───────────────────────────────────────── -->
+    <main class="container" id="main-app">
+        <header class="page-header">
+            <div>
+                <h1 class="page-title" id="page-title">Clinical Narrative Analysis</h1>
+                <p class="tagline" id="page-tagline">3-stage AI pipeline: LSTM → BART Transformer → BioBERT NER</p>
+            </div>
+            <!-- Pipeline diagram -->
+            <div class="pipeline-diagram" id="pipeline-diagram" aria-label="Active processing pipeline">
+                <div class="pipe-step" id="pipe-input"><span>Document</span></div>
+                <div class="pipe-arrow">›</div>
+                <div class="pipe-step" id="pipe-lstm"><span>LSTM Seq2Seq</span></div>
+                <div class="pipe-arrow">›</div>
+                <div class="pipe-step" id="pipe-bart"><span>BART</span></div>
+                <div class="pipe-arrow">›</div>
+                <div class="pipe-step" id="pipe-ner"><span>BioBERT NER</span></div>
+            </div>
+        </header>
+
+        <div class="app-grid">
+            <!-- ── INPUT PANEL ──────────────────────────── -->
+            <section class="dashboard-card input-panel" id="input-panel">
+                <div class="card-header-bar">
+                    <h2>Data Input</h2>
+                </div>
+                <div class="card-body">
+                    <div class="upload-area" id="drop-zone" role="button" tabindex="0" aria-label="Click or drag a file to upload">
+                        <svg class="upload-svg" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
+                        </svg>
+                        <p id="upload-text" class="upload-label">Select Medical Report (.txt, .pdf)</p>
+                        <input type="file" id="file-input" accept=".txt,.pdf" hidden aria-label="File upload">
+                    </div>
+
+                    <div class="divider"><span>OR PASTE TEXT</span></div>
+
+                    <div class="textarea-wrap">
+                        <textarea id="report-text" aria-label="Medical report text" placeholder="Paste clinical narrative here..."></textarea>
+                        <div class="char-count" id="char-count">0 characters</div>
+                    </div>
+
+                    <div id="ui-error" class="alert-error hidden" role="alert"></div>
+
+                    <button id="analyze-btn" class="btn-primary" aria-label="Run analysis">
+                        <svg id="btn-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 3l14 9-14 9V3z"/></svg>
+                        <span id="analyze-btn-text">Run Analysis Pipeline</span>
+                    </button>
+                </div>
+            </section>
+
+            <!-- ── RESULTS PANEL ────────────────────────── -->
+            <section class="dashboard-card results-panel" id="results-panel">
+
+                <!-- Empty state -->
+                <div class="empty-state" id="empty-state">
+                    <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" stroke-width="1.5">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                        <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/>
+                    </svg>
+                    <p>Awaiting Input Data</p>
+                    <span class="empty-hint">Upload a file or paste a clinical report to begin</span>
+                </div>
+
+                <!-- Loading state -->
+                <div class="loading-state hidden" id="loading-state" role="status" aria-live="polite">
+                    <div class="spinner"></div>
+                    <p class="loading-label" id="loading-label">Initializing pipeline...</p>
+                    <div class="loading-steps">
+                        <div class="lstep" id="lstep-1"><div class="lstep-dot"></div><span>LSTM Extraction</span></div>
+                        <div class="lstep" id="lstep-2"><div class="lstep-dot"></div><span>BART Summarization</span></div>
+                        <div class="lstep" id="lstep-3"><div class="lstep-dot"></div><span>BioBERT NER</span></div>
+                        <div class="lstep" id="lstep-4"><div class="lstep-dot"></div><span>Risk Classification</span></div>
+                    </div>
+                </div>
+
+                <!-- Results -->
+                <div class="results-content hidden" id="results-content">
+
+                    <!-- KPI strip -->
+                    <div class="kpi-row">
+                        <div class="kpi-card risk-kpi" id="risk-card">
+                            <span class="kpi-label">Risk Level</span>
+                            <div class="risk-badge" id="risk-label">—</div>
+                            <p class="risk-reason" id="risk-reason">—</p>
+                        </div>
+                        <div class="kpi-card">
+                            <span class="kpi-label">Pipeline Confidence</span>
+                            <div class="kpi-value" id="conf-pct">—</div>
+                            <div class="conf-bar-wrap"><div class="conf-bar" id="conf-bar" style="width:0%"></div></div>
+                        </div>
+                        <div class="kpi-card">
+                            <span class="kpi-label">Processing Time</span>
+                            <div class="kpi-value" id="meta-time">—</div>
+                            <div class="meta-small" id="meta-device">—</div>
+                        </div>
+                    </div>
+
+                    <!-- Tabs -->
+                    <div class="tabs" role="tablist">
+                        <button class="tab-btn active" role="tab" data-tab="tab-summary">Summaries</button>
+                        <button class="tab-btn" role="tab" data-tab="tab-entities">Entities <span class="tab-badge" id="entity-count-badge">0</span></button>
+                        <button class="tab-btn" role="tab" data-tab="tab-slip">Official Record</button>
+                    </div>
+
+                    <!-- Tab: Summaries -->
+                    <div class="tab-panel active" id="tab-summary" role="tabpanel">
+                        <div class="result-block">
+                            <h3>BART Abstractive Summary <span class="model-tag">Transformer</span></h3>
+                            <p id="bart-out" class="summary-text">—</p>
+                        </div>
+                        <div class="result-block" id="lstm-block">
+                            <h3>LSTM Keyword Extraction <span class="model-tag">Seq2Seq</span></h3>
+                            <p id="lstm-out" class="summary-text dim-text">—</p>
+                        </div>
+                    </div>
+
+                    <!-- Tab: Entities -->
+                    <div class="tab-panel hidden" id="tab-entities" role="tabpanel">
+                        <div class="entities-grid">
+                            <div class="entity-group disease">
+                                <div class="entity-header"><h3>Diseases & Conditions</h3><span class="ent-count" id="count-disease">0</span></div>
+                                <ul id="ent-disease"></ul>
+                            </div>
+                            <div class="entity-group symptom">
+                                <div class="entity-header"><h3>Symptoms & Signs</h3><span class="ent-count" id="count-symptom">0</span></div>
+                                <ul id="ent-symptom"></ul>
+                            </div>
+                            <div class="entity-group drug">
+                                <div class="entity-header"><h3>Medications</h3><span class="ent-count" id="count-drug">0</span></div>
+                                <ul id="ent-drug"></ul>
+                            </div>
+                            <div class="entity-group treatment">
+                                <div class="entity-header"><h3>Treatments & Procedures</h3><span class="ent-count" id="count-treatment">0</span></div>
+                                <ul id="ent-treatment"></ul>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tab: Medical Slip -->
+                    <div class="tab-panel hidden" id="tab-slip" role="tabpanel">
+                        <div class="slip-preview">
+                            <div id="medical-slip-container" class="medical-slip">
+                                <div class="slip-header">
+                                    <div class="slip-logo">MediReporter Clinical Systems</div>
+                                    <h2>Automated Patient Record</h2>
+                                    <p id="slip-ref">Reference: MR-—</p>
+                                </div>
+                                <div class="slip-body">
+                                    <table class="slip-table">
+                                        <tr>
+                                            <td><strong>Date:</strong> <span id="slip-date">—</span></td>
+                                            <td><strong>Risk:</strong> <span id="slip-risk">—</span></td>
+                                            <td><strong>AI Confidence:</strong> <span id="slip-conf">—</span></td>
+                                        </tr>
+                                    </table>
+                                    <div class="slip-section">
+                                        <h3>Clinical Narrative Summary</h3>
+                                        <p id="slip-summary">—</p>
+                                    </div>
+                                    <div class="slip-section">
+                                        <h3>Diagnoses &amp; Symptoms</h3>
+                                        <ul id="slip-issues"></ul>
+                                    </div>
+                                    <div class="slip-section">
+                                        <h3>Medications &amp; Treatments</h3>
+                                        <ul id="slip-plan"></ul>
+                                    </div>
+                                </div>
+                                <div class="slip-footer">
+                                    Auto-generated by MediReporter AI Pipeline. Requires physician review before clinical use.
+                                </div>
+                            </div>
+                        </div>
+                        <button id="download-slip-btn" class="btn-secondary" style="width:100%;margin-top:1rem;">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+                            Export Record as PDF
+                        </button>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <script src="/static/app.js?v=2.1"></script>
+</body>
+</html>
