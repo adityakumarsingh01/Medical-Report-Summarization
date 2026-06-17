@@ -10,6 +10,12 @@ By leveraging LSTM Attention Networks, BART Transformer Summarization, and BioBE
 
 ---
 
+## 📷 Application Preview
+
+![MediReporter Dashboard](ScreenShort/Image1.png)
+
+---
+
 ## 🚀 Key Features
 
 ### 📄 Clinical Report Upload
